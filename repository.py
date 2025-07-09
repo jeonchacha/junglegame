@@ -15,3 +15,6 @@ def store_refresh_token(tokendoc):
 
 def is_refresh_token_valid(jti):
     return db.token.find_one({'jti':jti})
+
+def revoke_refresh_token(jti):
+    return db.token.update_one({'jti':jti}, {'$set': {'revoke': True}})

@@ -99,8 +99,22 @@ def refresh():
     except jwt.InvalidTokenError:
         return jsonify({'msg': '리프레시 토큰이 유효하지 않습니다.'}), 403
 
-# 로그아웃 구현 쿠키의 리프래시토큰을 블랙리스트 처리하고 쿠키제거까지
+# 로그아웃 
+@app.route('/logout', methods=['POST'])
+def logout():
+    refresh_token = request.cookies.get('refresh_token')
+    try:
+        payload = jwt.decode(refresh_token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        jti = payload['jti']
 
+        result = revoke_refresh_token(jti)
+        status = result.modified_count == 1
+        if status:
+            response = make_response(jsonify({'msg': '로그아웃 되었습니다.'}))
+            response.delete_cookie('refresh_token')
+            return response
+    except:
+        return jsonify({'msg': '리프레시 토큰이 유효하지 않습니다.'}), 400
 
 # 토큰 검증 데코레이터
 def verify_token(f):
