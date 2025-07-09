@@ -66,14 +66,6 @@ def create_refresh_token(user_id):
     return encoded
 
 # 엑세스 토큰 재발급
-    # 리프레시 토큰이 존재하는지, 존재했으나 만료되지 않았는지, 토큰이 유효한지(해당유저에 해당하는건지), 블랙리스트가 아닌지( 이것만 디비)
-    # 리프레시 토큰을 디비에서 관리하는데 쿠키에 있어야할 이유?
-        # 모든 경우 db 접근할 필요없음. 디비에 접근해야 하는경우만 하고 나머지는 쿠키에서 가져와서 유효성 검사 하는게 나음.
-        # db에 접근해야 하는 경우 -> 로그아웃시 블랙리스트, 재발급 할때 블랙리스트 인지 조회할때 사용
-                # 등록 , 업데이트, 조회
-    # 리프레시 토큰까지 만료되면 그냥 재로그인..
-    # 디비에 아이디랑 블랙리스트만 있으면 되지않나..
-    # 아 아이디로 하면 안댐 uuid 써야한다., 아이디로 하면 중복나오잖아
 @app.route('/refresh', methods=['POST'])
 # 모든 403 에는 재 로그인 시킬 것
 def refresh():
@@ -91,7 +83,7 @@ def refresh():
         
         new_access_token = create_access_token(payload['user_id'])
         response = make_response(jsonify({'result':'엑세스 토큰 재발급 완료'}))
-        response.headers['Authorization'] = f'Bearer {new_access_token}'
+        response.set_cookie('access_token', new_access_token, httponly=True, samesite='Strict')
         return response
     
     except jwt.ExpiredSignatureError:
@@ -99,21 +91,17 @@ def refresh():
     except jwt.InvalidTokenError:
         return jsonify({'msg': '리프레시 토큰이 유효하지 않습니다.'}), 403
 
-# 로그아웃 구현 쿠키의 리프래시토큰을 블랙리스트 처리하고 쿠키제거까지
-
-
 # 토큰 검증 데코레이터
 def verify_token(f):
     @wraps(f)
     # 모든 403 에는 엑세스 토큰 재발급
     def decorated(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
+        access_token = request.cookies.get('access_token')
         
-        if not auth_header:
+        if not access_token:
             return jsonify({'msg': '엑세스 토큰이 존재하지 않습니다.'}), 403
         try:
-            token = auth_header.split(" ")[1]
-            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            payload = jwt.decode(access_token, app.config['SECRET_KEY'], algorithms=['HS256'])
             current_user_id = payload['user_id']
         except jwt.ExpiredSignatureError:
             return jsonify({'msg': '엑세스 토큰이 만료됐습니다.'}), 403
@@ -143,7 +131,8 @@ def login():
         refresh_token = create_refresh_token(user['id'])
 
         response = make_response(jsonify({'result':'success', 'userinfo':user}))
-        response.headers['Authorization'] = f'Bearer {access_token}'
+        
+        response.set_cookie('access_token', access_token, httponly=True, samesite='Strict')
         response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='Strict')
         return response   
     else:
