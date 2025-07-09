@@ -9,6 +9,3 @@ def create_user(userdoc):
 
 def find_id(id):
     return db.user.find_one({'id':id})
-
-def find_user(id, pw):
-    return db.user.find_one({'id':id, 'pw':pw})
