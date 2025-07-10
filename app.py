@@ -9,6 +9,13 @@ import datetime
 import bcrypt
 from functools import wraps
 import uuid
+from scrap_cotributions import *
+
+from pymongo import MongoClient
+from bson import ObjectId
+
+client = MongoClient('localhost', 27017)
+db = client.junglegame
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'secret'
@@ -172,6 +179,40 @@ def checkid():
         return jsonify({'result':'failure', 'msg':user['id'] + ' 는 중복된 아이디 입니다.'})
     else:
         return jsonify({'result':'success', 'msg':id + ' 는 사용가능한 아이디 입니다.'})
+
+#커밋티켓
+@app.route('/ticket', methods=['POST'])
+@verify_token
+def create_ticket_contribution(current_user_id):
+    user = db.user.find_one({'id': current_user_id})
+
+    if user['getCommitTicket']:
+        return jsonify({'result':'failure', 'msg': '오늘 커밋 티켓이 이미 지급됐습니다.'})
+    
+    count = getContributionCount(user['id_github']).split()[0]
+    if count == 'No':
+        return jsonify({'result':'failure', 'msg':'지난 contributions 내역이 존재하지 않습니다.'})
+    
+    total = user['appTicket'] + int(count)
+    db.user.update_one({'id': current_user_id}, {'$set': {'appTicket':total}})
+    
+    return jsonify({'result':'success', 'msg': str(count) + '장 추가 지급됐습니다.'})
+
+#매일티켓
+@app.route('/ticket/free', methods=['POST'])
+@verify_token
+def create_ticket_free(current_user_id):
+    user = db.user.find_one({'id': current_user_id})
+
+    if user['getAppTicket']:
+        return jsonify({'result':'failure', 'msg': '오늘 무료 티켓이 이미 지급됐습니다.'})
+    
+    total = user['appTicket'] + 1
+    db.user.update_one({'id': current_user_id}, {'$set': {'getAppTicket':True}})    
+    result = db.user.update_one({'id': current_user_id}, {'$set': {'appTicket':total}})
+    status = result.modified_count == 1
+    if status:
+        return jsonify({'result':'success', 'msg': '무료 티켓이 1장 지급됐습니다.'})
 
 if __name__ == '__main__':
    print(sys.executable)  

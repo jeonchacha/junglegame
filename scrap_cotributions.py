@@ -2,30 +2,36 @@ import requests
 from bs4 import BeautifulSoup
 import datetime
 
-def get_today_contributions(username):
-    today = datetime.date.today()
-    to_date = today.isoformat()
+def getContributionCount(githubAccount):
+    date = datetime.date.today()
+
+    link = f'http://github.com/users/{githubAccount}/contributions?from={date}&to={date}'
+    req = requests.get(link)
+    html = req.text
+
+    soup = BeautifulSoup(html, 'html.parser')
+
+    contributionMsg = []
+    tooltips = soup.find_all('tool-tip')
+    for tooltip in tooltips:
+        text = tooltip.get_text(strip=True)
+        if "contributions" in text:
+            contributionMsg.append(text)
+
+    date = datetime.date.today() - datetime.timedelta(days=1)
     
-    url = f"https://github.com/users/{username}/contributions?from={to_date}&to={to_date}"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    day = date.day
+    month = date.strftime("%B")
 
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
+    if 10 <= day <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
 
-    soup = BeautifulSoup(response.content, "html.parser")
+    today_string_match = f"{month} {day}{suffix}."
 
-    # 오늘 날짜의 <rect> 태그 찾기
-    for rect in soup.find_all("rect"):
-        if rect.has_attr("data-date") and rect.has_attr("data-count"):
-            if rect["data-date"] == to_date:
-                print('aaaaaa')
-                return int(rect["data-count"])
+    for entry in contributionMsg:
+        if today_string_match in entry:
+            return entry
 
-    return 0
-
-if __name__ == "__main__":
-    username = "sdj3261"
-    count = get_today_contributions(username)
-    print(f"{username}의 오늘 contributions 수: {count}")
+    return today_string_match
