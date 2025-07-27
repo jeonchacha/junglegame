@@ -528,7 +528,7 @@ def create_ticket_contribution(current_user_id):
 
     if user['getCommitTicket']:
         return jsonify({'result':'failure', 'msg': '오늘 커밋 티켓이 이미 지급됐습니다.'})
-    
+
     count = getContributionCount(user['id_github']).split()[0]
     if count == 'No':
         return jsonify({'result':'failure', 'msg':'지난 contributions 내역이 존재하지 않습니다.'})

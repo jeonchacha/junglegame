@@ -120,7 +120,6 @@ function addCouponAlert(){
 }
 
 function addEveryDayTicket(){
-    
     $.ajax({
         type:"POST",
         url:"/ticket/free",
@@ -136,11 +135,9 @@ function addEveryDayTicket(){
 }
 
 function addCommitTicket(){
-    
     $.ajax({
         type:"POST",
         url:"/ticket",
-
         success:function(response){
             if(response["result"]=="success"){
                 updateTicketCount();
