@@ -5,7 +5,6 @@
     <title>Reward-page</title>
     <link rel="stylesheet" href="../static/css/login.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     
 </head>
@@ -14,10 +13,10 @@
     <div class="flex items-center">
         <i class="fa-solid fa-crown fa-2xl text-8xl mr-20"  style="color: #74C0FC;"></i>
         <div class="flex flex-col items-center">
-            <h4>{{ appList[-1].appRound }}회 당첨자</h4>
-            <h4>{{ appList[-1].appUser }}님</h4>
-            <h4>당첨 금액 : {{ appList[-1].appUser }}</h4>
-            <button class="text-gray-700 mt-1"  onclick="toggle_record()">지난 도전 상세보기</button>
+            <h4>{{ rewards[0].appRound }}회 당첨자</h4>
+            <h4>{{ rewards[0].appUser }}님</h4>
+            <h4>당첨 금액 : {{ rewards[0].appPrice }}</h4>
+
             <div id="past_record" class="hidden flex flex-col gap-5 text-2xl mt-10">
                 <ul>
                     {% for user in appList %}
@@ -29,24 +28,9 @@
         </div>
         
     </div>
-    <div class="flex items-center">
-        <i class="fa-solid fa-crown fa-2xl text-8xl mr-20"  style="color: #74C0FC;"></i>
-        <div class="flex flex-col items-center">
-            <h4>10회 당첨자</h4>
-            <h4>jay****님</h4>
-            <h4>당첨 금액 : 3,333</h4>
-        </div>
-    </div>
-    <div class="flex items-center">
-        <i class="fa-solid fa-crown fa-2xl text-8xl mr-20"  style="color: #74C0FC;"></i>
-        <div class="flex flex-col items-center">
-            <h4>10회 당첨자</h4>
-            <h4>jay****님</h4>
-            <h4>당첨 금액 : 3,333</h4>
-        </div>
-    </div>
+
     <button id="join-btn"
-        onclick="location.href='main.html'"
+        onclick="location.href='{{ url_for('main') }}'",
         class="bg-[#00c896] text-white px-5 py-5 cursor-pointer rounded mt-10">
         돌아가기
       </button>

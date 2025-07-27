@@ -5,62 +5,100 @@
   <title>main</title>
   <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>
+  <script>
+    function guessMoneyLimit() {
+        const min = {{ minPrice }};
+        const max = {{ maxPrice }};
+        const value = parseInt(document.getElementById("user-input-money").value);
+
+        if (isNaN(value) || value < min || value > max) {
+            alert(`${min}부터 ${max} 사이의 정수만 입력해주세요!`);
+            return;
+        }
+
+    
+        guessMoney();  
+    }
+
+    
+    </script>
+    <style>
     .level-0 { background-color: #ebedf0; }
     .level-1 { background-color: #c6e48b; }
 
-  </style>
+</style>
 </head>
-<body class="min-h-screen bg-white flex flex-col items-center mt-40 text-gray-800 font-sans">    
+<body class="min-h-screen bg-white flex flex-col items-center mt-40 text-gray-800 font-sans"> 
+    <div class="w-full flex justify-end pr-20 mt-5 mb-10">
+        <button onclick="logout()" class="bg-emerald-500 text-white px-4 py-2 rounded hover:bg-emerald-600 transition">
+            로그아웃
+        </button>
+    </div>
+
     <div class="flex flex-col items-center mb-5">
         <img src="https://contents.kyobobook.co.kr/sih/fit-in/458x0/pdt/9791163031727.jpg" class="w-40 mb-4" />
-        <input id="user-input-money" placeholder="{{ minScore_ssr }}~{{ maxScore_ssr }} 입력 가능" class="w-full px-2 py-3 border-b border-gray-400 focus:outline-none text-center text-gray-600 mb-4">
-
+        <form>
+        <input id="user-input-money" placeholder="{{ minPrice }}~{{ maxPrice }} 입력 가능" type="number"
+        min=10 max=20 class="w-full px-2 py-3 border-b border-gray-400 focus:outline-none text-center text-gray-600 mb-4">
         <div class="flex space-x-2 mb-2">
-            <button onclick="guessMoney('as')" class="bg-emerald-500 text-white px-4 py-2 rounded">
+            <button onclick=" guessMoneyLimit()" type="button" class="bg-emerald-500 text-white px-4 py-2 rounded">
                 도전하기
             </button>
-        <button onclick="popupTicket()" class="border border-emerald-500 text-emerald-500 px-4 py-2 rounded">도전권 얻기</button>
+        <button type="button" onclick="popupTicket()" class="border border-emerald-500 text-emerald-500 px-4 py-2 rounded">도전권 얻기</button>
         </div>
+        </form>
     </div>
 
 
     <div id="ticket-count">
-        🎫 보유 도전권 : {{ ticket }}개
+        {% if appTicket %}
+        🎫 보유 도전권 : {{ appTicket }}개
+        {% else %}
+        🎫 보유 도전권 : 없음
+        {% endif %}
     </div>
     
 
-    <button class="text-gray-700"  onclick="toggle_record()">→ 나의 도전 기록 확인하기</button>
-    <div id="past_record" class="hidden flex flex-col gap-5 text-2xl mt-10">
-        <ul>
+    <button class="text-gray-700 underline hover:text-emerald-500 transition mb-4 mt-10"  onclick="toggle_record()">→ 나의 도전 기록 확인하기</button>
+    <div id="past_record" class="hidden transition-all duration-300 flex flex-col items-center gap-4 mt-4 w-full max-w-md">
+        <h2 class="text-xl font-semibold text-gray-800">📜 나의 도전 기록</h2>
+        <ul class="space-y-2">
             {% for user in appList %}
-            <li>
-                {{ user.appPrice }}  ->  {{ user.appDate[:10] }} {{ user.appDate[11:16]}}</li>
+            <li class="flex justify-between items-center bg-gray-100 px-4 py-3 rounded-lg shadow hover:shadow-md transition">
+                <span class="text-emerald-600 font-medium">{{ user.appPrice }}원</span>
+                <span class="text-sm text-gray-500">{{ user.appDate[:10] }} {{ user.appDate[11:16] }}</span>
+            </li>
             {% endfor %}
         </ul>
     </div>
 </div>
+
+
 <div class="flex gap-40 mt-40 items-center">
     <div class="flex flex-col gap-10 text-center">
         {% if appList and appList[0].appDate %}
             <div class="label">
-            {{ appList[0].appDate[:4] }}년 {{ appList[0].appDate[8:10]|int }}월
+            {{ appList[0].appDate[:4] }}년 {{ appList[0].appDate[5:7]|int }}월
             </div>
         {% else %}
             <div class="label">최근 응모 기록 없음</div>
         {% endif %}
-        <div class="g
-        rid gap-3" style="grid-template-columns: repeat(7, 16px);" id="grassGrid">
-            {% for day in appList %}
-                <div class="w-6 h-6 rounded-sm level-{{ day.level }}"
-                    data-date="{{ day.appDate[:10] }}">
-                </div>
+        <div class="grid gap-3" style="grid-template-columns: repeat(7, 16px);" id="grassGrid">
+            {% for day in days %}
+            <div class="w-6 h-6 rounded-sm level-{{ day.level }}"
+                data-date="{{ day.date }}">
+            </div>
             {% endfor %}
         </div>
+    {% if appList %}
     <p class="mt-10 text-sm text-gray-700">연속 응모 횟수 {{consecutiveDay}}회</p>
+    {% else %}
+    <p class="mt-10 text-sm text-gray-700">연속 응모 횟수 0회</p>
+    {% endif %}
+
     </div>
     <div class="flex flex-col gap-3 mb-5 text-center">
-        <div class="text-9xl mt-7 mb-7" onclick="location.href='reward.html'">🏆</div>
+        <div class="text-9xl mt-7 mb-7" onclick="location.href='{{url_for('getRewards')}}'">🏆</div>
         <p class="text-sm text-gray-700">지난 도전 당첨 결과 확인</p>
     </div>
 </div>
@@ -73,6 +111,16 @@
 
         <div class="flex justify-center space-x-4">
             <button id="popup-cancel" onclick="popupSuccess()" class="text-white bg-emerald-500 border border-gray-300 text-gray-600 px-4 py-2 rounded">돌아가기</button>
+        </div>
+    </div>
+</div>
+
+<div id="popup-user-fail" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden ">
+    <div class="flex flex-col justify-center bg-white p-6 rounded-xl shadow-lg w-[500px] h-[700px] text-center">
+        <div class="mb-20 mt-12 font-semibold text-xl"> 🥹 보유하고 있는 도전권이 없습니다 ㅠㅠ </div>
+        <div class="mb-[100px] font-semibold text-xl"> 🔥 커밋하고 도전권 얻으러 가기 ! </div>
+        <div class="flex justify-center space-x-4">
+            <button id="popup-cancel" onclick="popupfail()" class="text-white bg-emerald-500 border border-gray-300 text-gray-600 px-4 py-2 rounded mt-14">돌아가기</button>
         </div>
     </div>
 </div>
@@ -101,7 +149,9 @@
     </div>
 
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <script src="/static/js/main.js"></script>
+
 </body>
 </html>

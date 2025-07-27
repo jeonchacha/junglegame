@@ -7,52 +7,105 @@ function fireConfetti() {
 }
 
 
+function logout() {
+    $.ajax({
+        type: 'POST',
+        url: '/logout',
+        success: function(response) {
+            location.href = '/login';
+            alert(response.msg);
+        },
+    });
+}
+
+
+function getTodayDateString() {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+}
+
+function markTodayAttendance() {
+    const todayStr = getTodayDateString();
+    const cell = document.querySelector(`#grassGrid div[data-date="${todayStr}"]`);
+    if (cell) {
+        cell.classList.remove("level-0");
+        cell.classList.add("level-1");
+    }
+}
+
+
 //유저가 도전권을 사용하여 도전한 경우 작동하는 함수
-function guessMoney(id){
-    popupSuccess();
-    fireConfetti();
+function guessMoney(){
     let money = $("#user-input-money").val()
-    
     $.ajax({
         type:"POST",
         url:"/apply",
-        data:{appPrice:money ,userId:id},
+        data:{appPrice:money},
 
-        beforeSend: function (xhr) {
-            const token = localStorage.getItem('jwt_token');
-            if (token) {
-                xhr.setRequestHeader('Authorization', token);
-            }
-        },
         error: function (xhr) {
            // xhr.responseJSON
         },
 
         success:function(response){
             if(response["result"]=="success"){
-                alert("도전 성공")
                 popupSuccess();
-                updateTicketCount();
+                fireConfetti();
+                updateTicketCount(); 
+                updateRecordList();
+
+                if (response["isFirstAttendance"]) {
+                    markTodayAttendance(); 
+                    updateCalendar();
+                }
             }
             else{
-                alert("도전 실패")
+                popupfail();
             }
         }
     })
 
 }
-//도전권 획득 및 차감 업데이트 함수
-function updateTicketCount() {
+
+function updateRecordList() {
     $.ajax({
         type: 'GET',
-        url: '/api/ticket',
+        url: '/getApplist',
         success: function (response) {
-            document.getElementById("ticket-count").innerText = `보유 도전권: ${response.ticket}개`;
+            if (response.result === 'success') {
+                const list = response.appList;
+                const container = $("#past_record ul");
+                container.empty(); 
+                
+                list.forEach(user => {
+                    const date = user.appDate.slice(0, 10);
+                    const time = user.appDate.slice(11, 16);
+                    const price = user.appPrice;
+                    const html = `
+                        <li class="flex justify-between items-center bg-gray-100 px-4 py-3 rounded-lg shadow hover:shadow-md transition">
+                            <span class="text-emerald-600 font-medium">${price}원</span>
+                            <span class="text-sm text-gray-500">${date} ${time}</span>
+                        </li>`;
+                    container.append(html);
+                });
+            }
         }
     });
 }
 
-//완성전
+
+function updateTicketCount() {
+    $.ajax({
+        type: 'GET',
+        url:'/getTicketCount',
+        success: function (response) {
+            document.getElementById("ticket-count").innerText = `보유 도전권: ${response.appTicket}개`;
+        }
+    });
+}
+
 
 
 function addCouponAlert(){
@@ -70,18 +123,7 @@ function addEveryDayTicket(){
     
     $.ajax({
         type:"POST",
-        url:"/api/freeEveryTicket",
-        data:{userId:id},
-
-        beforeSend: function (xhr) {
-            const token = localStorage.getItem('jwt_token');
-            if (token) {
-                xhr.setRequestHeader('Authorization', token);
-            }
-        },
-        error: function (xhr) {
-           // xhr.responseJSON
-        },
+        url:"/ticket/free",
         success:function(response){
             if(response["result"]=="success"){
                 updateTicketCount();
@@ -97,18 +139,8 @@ function addCommitTicket(){
     
     $.ajax({
         type:"POST",
-        url:"/api/freeCommitTicket",
-        data:{userId:id},
+        url:"/ticket",
 
-        beforeSend: function (xhr) {
-            const token = localStorage.getItem('jwt_token');
-            if (token) {
-                xhr.setRequestHeader('Authorization', token);
-            }
-        },
-        error: function (xhr) {
-           // xhr.responseJSON
-        },
         success:function(response){
             if(response["result"]=="success"){
                 updateTicketCount();
@@ -129,6 +161,15 @@ function popupSuccess(){
     successDiv.classList.add('hidden');
 }}
 
+function popupfail(){
+    const failDiv = document.getElementById('popup-user-fail');
+    if (failDiv.classList.contains('hidden')) {
+        failDiv.classList.remove('hidden');
+    } 
+    else {
+    failDiv.classList.add('hidden');
+}}
+
 function popupTicket(){
     const ticketDiv = document.getElementById('popup-ticket');
     if (ticketDiv.classList.contains('hidden')) {
@@ -146,9 +187,3 @@ function toggle_record(){
     else {
     recordDiv.classList.add('hidden');
 }}
-
-
-
-
-
-

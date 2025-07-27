@@ -1,29 +1,29 @@
-<<<<<<< Updated upstream
-from bson import ObjectId
-from flask import Flask, jsonify, render_template, request
-=======
 from flask import Flask, jsonify, render_template, request, redirect, url_for, make_response
->>>>>>> Stashed changes
 from flask.json.provider import JSONProvider
+
+from collections import Counter
+
+import requests
+from bs4 import BeautifulSoup
+
 from repository import *
 import json
 import sys
-<<<<<<< Updated upstream
-=======
 import jwt
 import bcrypt
 from functools import wraps
 
 import random
 import datetime
+from datetime import timedelta
 
 import schedule
 import time
 import threading
 import uuid
->>>>>>> Stashed changes
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'secret'
 
 class CustomJSONEncoder(json.JSONEncoder):
     def default(self, o):
@@ -40,93 +40,87 @@ class CustomJSONProvider(JSONProvider):
 
 app.json = CustomJSONProvider(app)
 
-<<<<<<< Updated upstream
-@app.route('/')
-def home():
-   return render_template('index.html')
-=======
 # 1회차 = 7월 7일 (기준)
 firstRound = datetime.date(2025, 7, 7)
 
-def create_token(user_id):
-    now = datetime.datetime.now(datetime.timezone.utc)
-    exp = now + datetime.timedelta(hours=10)
+def create_access_token(user_id):
+    encoded = jwt.encode(
+        payload={
+            'user_id': user_id,
+            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=10)
+        },
+        key=app.config['SECRET_KEY'],
+        algorithm='HS256'
+    )
+    return encoded
 
-    payload = {
-        'user_id': user_id,
-        'exp': exp,
-        'iat': now,
-        'jti': str(uuid.uuid4())  # 유일한 ID 부여 → 토큰이 매번 다르게 나옴
+def create_refresh_token(user_id):
+    jti = str(uuid.uuid4())
+    encoded = jwt.encode(
+        payload={
+            'jti': jti,
+            'user_id': user_id,
+            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=1)
+        },
+        key=app.config['SECRET_KEY'],
+        algorithm='HS256'
+    )
+    
+    tokendoc = {
+        'jti': jti,
+        'user_id':user_id,
+        'revoke': False
     }
+    # db 저장
+    store_refresh_token(tokendoc)
 
-    token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm='HS256')
-    return token
+    return encoded
+
+# 엑세스 토큰 재발급
+@app.route('/refresh', methods=['POST'])
+# 모든 403 에는 재 로그인 시킬 것
+def refresh():
+    refresh_token = request.cookies.get('refresh_token')
+    if not refresh_token:
+        return jsonify({'msg': '리프레시 토큰이 존재하지 않습니다.'}), 403
+    try:
+        payload = jwt.decode(refresh_token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        jti = payload['jti']
+
+        # 블랙리스트 인지 조회
+        is_blacklist = is_refresh_token_valid(jti)
+        if is_blacklist['revoke']:
+            return jsonify({'msg': '리프레시 토큰이 revoke 되었습니다.'}), 403
+        
+        new_access_token = create_access_token(payload['user_id'])
+        response = make_response(jsonify({'result':'엑세스 토큰 재발급 완료'}))
+        response.set_cookie('access_token', new_access_token, httponly=True, samesite='Strict')
+        return response
+    
+    except jwt.ExpiredSignatureError:
+        return jsonify({'msg': '리프레시 토큰이 만료됐습니다.'}), 403    
+    except jwt.InvalidTokenError:
+        return jsonify({'msg': '리프레시 토큰이 유효하지 않습니다.'}), 403
 
 # 토큰 검증 데코레이터
 def verify_token(f):
     @wraps(f)
-
+    # 모든 403 에는 엑세스 토큰 재발급
     def decorated(*args, **kwargs):
-        auth_header = request.headers.get('Authorization')
-        print(auth_header)
-        if not auth_header:
-            print("❌ 토큰이 없습니다.")
-            return jsonify({'msg': '토큰이 존재하지 않습니다.'}), 403
-
-        parts = auth_header.split(" ")
-        if len(parts) != 2 or parts[0] != 'Bearer':
-            print("❌ 잘못된 토큰 형식:", auth_header)
-            return jsonify({'msg': '잘못된 토큰 형식입니다.'}), 403
-
-        token = parts[1]
+        access_token = request.cookies.get('access_token')
+        
+        if not access_token:
+            return jsonify({'msg': '엑세스 토큰이 존재하지 않습니다.'}), 403
         try:
-            decode_jwt = jwt.decode(
-                token,
-                app.config['SECRET_KEY'],
-                algorithms=['HS256']
-            )
-            current_user_id = decode_jwt['user_id']
-
+            payload = jwt.decode(access_token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            current_user_id = payload['user_id']
         except jwt.ExpiredSignatureError:
-            print("⏰ 토큰 만료됨")
-            return jsonify({'msg': '토큰이 만료됐습니다.'}), 401
-        except jwt.DecodeError as e:
-            print("❌ 디코딩 오류:", str(e))
-            return jsonify({'msg': '토큰 디코딩 실패'}), 403
-        except jwt.InvalidTokenError as e:
-            print("❌ 토큰 검증 실패:", str(e))
-            return jsonify({'msg': '유효하지 않은 토큰입니다.'}), 403
-        except Exception as e:
-            print("❌ 기타 예외:", str(e))
-            return jsonify({'msg': '서버 오류 발생'}), 500
-
+            return jsonify({'msg': '엑세스 토큰이 만료됐습니다.'}), 403
+        except jwt.InvalidTokenError:
+            return jsonify({'msg': '엑세스 토큰이 유효하지 않습니다.'}), 403
+        
         return f(current_user_id, *args, **kwargs)
     return decorated
-
-
-# Flask-Mail 설정
-app.config['MAIL_SERVER'] = 'smtp.gmail.com'
-app.config['MAIL_PORT'] = 587
-app.config['MAIL_USE_TLS'] = True
-app.config['MAIL_USE_SSL'] = False
-app.config['MAIL_USERNAME'] = 'seo980620@gmail.com'
-app.config['MAIL_PASSWORD'] = 'hhvw vlgp neca mtyk'
-app.config['MAIL_DEFAULT_SENDER'] = 'seo980620@gmail.com'
-mail = Mail(app)
-
-#이메일 발송 함수
-def send_verification_email(user_email, code):
-    msg = Message(
-        subject = "[Flask App] 이메일 주소 확인 코드",
-        recipients=[user_email],
-        html=f"""
-        <h1>이메일 주소 확인</h1>
-        <p>계속하려면 6자리 코드를 입력해주세요</p>
-        <h2>{code}</h2>
-        <p>이 코드는 5분간 유효합니다.</p>
-        """
-    )
-    mail.send(msg)
 
 def makeTestUser():
     name = 'userName'
@@ -140,7 +134,7 @@ def makeTestUser():
     appTicket = 1
     getAppTicket = False
     appList = [{'productName': '콜라', 'appPrice': 10, 'appDate': datetime.datetime(2025,7,6)},
-                {'producctName': '사이다', 'appPrice': 20,'appDate': datetime.datetime(2025,7,7)}]
+                {'productName': '사이다', 'appPrice': 20,'appDate': datetime.datetime(2025,7,7)}]
     attendanceList = [{'dateTime': datetime.datetime(2025,7,6), 'isAttendance': True},
                       {'dateTime': datetime.datetime(2025,7,7), 'isAttendance': True},
                       {'dateTime': datetime.datetime(2025,7,8), 'isAttendance': True}]
@@ -218,29 +212,9 @@ def start_scheduler():
     scheduler_thread.daemon = True # 메인 스레드가 종료되면 함께 종료되도록 설정
     scheduler_thread.start()
 
-
-#경품리스트페이지 주기
-@app.route('/getRewards', methods=['GET'])
-def getRewards():
-    all_doc_cursor = db.reward.find({})
-    rewards = list(all_doc_cursor)
-    #appRound로 정렬해서 주기
-    #내림차순
-    sorted_rewards = sorted(rewards, key=lambda reward: reward['appRound'], reverse=True)
-    return render_template('reward.html',
-                            rewards=sorted_rewards)
-
 @app.route('/', methods=['GET'])
 def home():
     return render_template('login.html')
-
-@app.route('/join')
-def join():
-    return render_template("join.html")
-
-@app.route('/mainPage',methods=['GET'])
-def main_Page():
-    return render_template("main.html")
 
 @app.route('/login', methods=['POST', 'GET'])
 def login():
@@ -254,41 +228,119 @@ def login():
         
         if user != None and bcrypt.checkpw(encoded_pw, user['pw']):
             user.pop('pw')
-            encoded_jwt = create_token(user['id'])
+            access_token = create_access_token(user['id'])
+            refresh_token = create_refresh_token(user['id'])
 
             response = make_response(jsonify({'result':'success'}))
-            response.headers['Authorization'] =encoded_jwt
-            return response
+            
+            response.set_cookie('access_token', access_token, httponly=True, samesite='Strict')
+            response.set_cookie('refresh_token', refresh_token, httponly=True, samesite='Strict')
+            return response   
         else:
             return jsonify({'result':'failure', 'msg':'아이디가 존재하지 않거나 비밀번호가 틀렸습니다.'})
-        
+
     else:
         return render_template("login.html")
+    
+# 로그아웃 
+@app.route('/logout', methods=['POST'])
+def logout():
+    refresh_token = request.cookies.get('refresh_token')
+    try:
+        payload = jwt.decode(refresh_token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        jti = payload['jti']
+
+        result = revoke_refresh_token(jti)
+        status = result.modified_count == 1
+        if status:
+            response = make_response(jsonify({'msg': '로그아웃 되었습니다.'}))
+            response.delete_cookie('refresh_token')
+            return response
+    except:
+        return jsonify({'msg': '리프레시 토큰이 유효하지 않습니다.'}), 400
+    
+@app.route('/signup', methods=['POST', 'GET'])
+def signup():
+    if request.method == 'POST':
+        name = request.form['name']
+        id = request.form['id']
+        pw = request.form['pw']
+        id_github = request.form['id_github']
+
+        # 바이트 문자열로 변환
+        encoded_pw = pw.encode('utf-8')
+        # 동일한 입력에 대해서도 항상 다른 값 
+        salt = bcrypt.gensalt()
+        hashed_pw = bcrypt.hashpw(encoded_pw, salt)
+
+        userdoc = {
+            'name':name,
+            'id':id,
+            'pw':hashed_pw,
+            'id_github':id_github,
+            'appTicket':0,
+            'getAppTicket':False,
+            'getCommitTicket':False,
+            'appList':[],
+            'attendanceList':[]
+        }
+
+        create_user(userdoc)
+
+        return jsonify({'result':'success'})
+    
+    else:
+        return render_template("join.html")
+
+@app.route('/checkid', methods=['GET'])
+def checkid():
+    id = request.args.get('id')
+    user = find_id(id)
+
+    if user != None:
+        return jsonify({'result':'failure', 'msg':user['id'] + ' 는 중복된 아이디 입니다.'})
+    else:
+        return jsonify({'result':'success', 'msg':id + ' 는 사용가능한 아이디 입니다.'})
 
 @app.route('/main', methods=['GET'])
 @verify_token
 def main(current_user_id):
-    print('start')
     user = db.user.find_one({'id': current_user_id})
-    #appList
-    appList = user.get('appList', [])
-    for app in appList:
+    # appList
+    appList_make = user.get('appList', [])
+    for app in appList_make:
         app['appDate'] = app['appDate'].isoformat()
-
-    #consecutiveDay, attendanceList
+      
+    # consecutiveDay
     consecutiveDay = calcConsecutiveAttendance(user)
-    #줘야되는 형식[{'dateTime': datetime,'level': int}]
+
+    # 달력용 날짜 31개
     atdList = user.get('attendanceList', [])
+    attendanceList = []
     if atdList:
-        attendanceList = [
-            {
+        for item in atdList:
+            date_str = item['dateTime'].date().isoformat() 
+            attendanceList.append({
                 'dateTime': item['dateTime'].isoformat(),
                 'level': int(item['isAttendance'])
-            }
-            for item in atdList
-        ]
-    else:
-        attendanceList = []
+            })
+    
+    start_date = datetime.datetime.today().replace(day=1)
+    days = []
+    
+    for i in range(31):
+        d = start_date + timedelta(days=i)
+        d_str = d.strftime("%Y-%m-%d")
+        
+        level = "0"
+      
+        for item in attendanceList:
+            if item['dateTime'][:10] == d_str:
+                level = "1" 
+                break  
+
+        # 날짜와 level을 days 리스트에 추가
+        days.append({"date": d_str, "level": level})
 
     #appTicket
     appTicket = user.get('appTicket', 0)
@@ -300,69 +352,21 @@ def main(current_user_id):
     productName = product['productName']
     minPrice = product['minPrice']
     maxPrice = product['maxPrice']
-    
+    print(appList_make,appTicket)
     return render_template("main.html",result="success",
-                           appList=appList, consecutiveDay=consecutiveDay, attendanceList=attendanceList, appTicket=appTicket,
+                           appList=appList_make, consecutiveDay=consecutiveDay, days=days, appTicket=appTicket,
                            productName=productName, minPrice=minPrice, maxPrice=maxPrice)
 
-@app.route('/signup', methods=['POST'])
-def signup():
-    name = request.form['name']
-    id = request.form['id']
-    pw = request.form['pw']
-    id_github = request.form['id_github']
-
-    # 바이트 문자열로 변환
-    encoded_pw = pw.encode('utf-8')
-    # 동일한 입력에 대해서도 항상 다른 값 
-    salt = bcrypt.gensalt()
-    hashed_pw = bcrypt.hashpw(encoded_pw, salt)
-
-    userdoc = {
-        'name':name,
-        'id':id,
-        'pw':hashed_pw,
-        'id_github':id_github
-    }
-
-    create_user(userdoc)
-
-    return jsonify({'result':'success'})
-
-@app.route('/checkid', methods=['GET'])
-def checkid():
-    id = request.args.get('id')
-    user = find_id(id)
-
-    if user != None:
-        return jsonify({'result':'failure', 'msg':user['id'] + ' 는 중복된 아이디 입니다.'})
-    else:
-        return jsonify({'result':'success', 'msg':id + ' 는 사용가능한 아이디 입니다.'})
-    
-#@app.route('/register', methods=['GET', 'POST'])
-#def register():
-    if request.method == 'POST':
-        email = request.form.get('email')
-        id = request.form.get('id')
-        pw = request.form.get('password')
-
-        code = str(random.randint(100000,999999))
-        expiration_time = datetime.datetime.now() + datetime.timedelta(minutes=5)
-
-        user = {'email': email, 'id': id, 'pw': pw, 'code': code, 'code_expires_at': expiration_time}
-
-        db.user.insert_one(user)
-        send_verification_email(email, code)
-
-        return render_template('register.html')
-        # return redirect(url_for('verify-email', email=email))
-    
-    return render_template('register.html')
-
-#@app.route('/verify-email', methods=['GET'])
-#def verifyEmail():
-    code = request.args.get('code')
-    return jsonify({'result': 'success'})
+#경품리스트페이지 주기
+@app.route('/getRewards', methods=['GET'])
+def getRewards():
+    all_doc_cursor = db.reward.find({})
+    rewards = list(all_doc_cursor)
+    #appRound로 정렬해서 주기
+    #내림차순
+    sorted_rewards = sorted(rewards, key=lambda reward: reward['appRound'], reverse=True)
+    return render_template('reward.html',
+                            rewards=sorted_rewards)
 
 #응모하기
 @app.route('/apply', methods=['POST'])
@@ -372,32 +376,37 @@ def apply(current_user_id):
     user = db.user.find_one({'id': current_user_id})
 
     #응모권 부족한 경우
-    if user['appTicket'] < 0:
+    if user['appTicket'] < 1:
         return jsonify({'resuslt': 'failure'})
     
     #티켓사용및 출석처리
     newAppTicket = user['appTicket'] - 1
-    db.user.update_one({'id': id}, {'$set' : {'appTicket': newAppTicket}})
-    newAttendanceList = user['attendanceList']
-    for record in newAttendanceList:
-        if record['datetime'] == datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0):
-            record['isAttendance'] = True
-            isAttendance = True
-            break
-    db.user.update_one({'id': id}, {'$set' : {'attendanceList': newAttendanceList}})
+    db.user.update_one({'id': current_user_id}, {'$set' : {'appTicket': newAppTicket}})
+    attendanceList = user['attendanceList']
+    if attendanceList:
+        for record in attendanceList:
+            if record['dateTime'] == datetime.datetime.today().replace(hour=0, minute=0, second=0, microsecond=0):
+                record['isAttendance'] = True
+                isAttendance = True
+                break
+            else:
+                isAttendance = False
+        db.user.update_one({'id': current_user_id}, {'$set' : {'attendanceList': attendanceList}})
+    else:
+        isAttendance = False
 
     #출석시 연속 응모 4배수에 추가 도전권 지급
     if isAttendance:
         consecutiveDay = calcConsecutiveAttendance(user)
         if (consecutiveDay % 4 == 0):
             newAppTicket = user['appTicket'] + 1
-            db.user.update_one({'id': id}, {'$set' : {'appTicket': newAppTicket}})
+            db.user.update_one({'id': current_user_id}, {'$set' : {'appTicket': newAppTicket}})
 
     #응모 딕셔너리 만들어서 DB내 리스트에 추가
     endDate = datetime.datetime.today().replace(hour=23, minute=59, second=59, microsecond=0)
     product = db.product.find_one({'appEndDate': endDate})
     app = {'productName': product['productName'], 'appPrice': appPrice, 'appDate': datetime.datetime.now()}
-    db.user.update_one({'id': id}, {'$push' : {'appList': app}})
+    db.user.update_one({'id': current_user_id}, {'$push' : {'appList': app}})
 
     return jsonify({'result': 'success'})
 
@@ -477,25 +486,80 @@ def getProductInfo():
     maxPrice = product['maxPrice']
     return jsonify({'result': 'success', 'productName': productName, 'minPrice': minPrice, 'maxPrice': maxPrice})
 
-def testGithub():
-    userId = 'userId'
-    user = db.user.find_one({'id': userId})
-    githubAccount = user['githubAccount']
-    req = requests.get(f'http://github.com/{githubAccount}')
+def getContributionCount(githubAccount):
+    date = datetime.date.today()
+
+    link = f'http://github.com/users/{githubAccount}/contributions?from={date}&to={date}'
+    req = requests.get(link)
     html = req.text
 
     soup = BeautifulSoup(html, 'html.parser')
-    repos = soup.select('.ContributionCalendar-grid.js-calendar-graph-table')
 
-    return jsonify({'result': 'success', 'repos': str(repos)})
+    contributionMsg = []
+    tooltips = soup.find_all('tool-tip')
+    for tooltip in tooltips:
+        text = tooltip.get_text(strip=True)
+        if "contributions" in text:
+            contributionMsg.append(text)
+
+    date = datetime.date.today() - timedelta(days=1)
+    # 일(day)에 따라 접미사(st, nd, rd, th)를 붙여줍니다.
+    day = date.day
+    month = date.strftime("%B")
+
+    if 10 <= day <= 20:
+        suffix = "th"
+    else:
+        suffix = {1: "st", 2: "nd", 3: "rd"}.get(day % 10, "th")
+
+    today_string_match = f"{month} {day}{suffix}."
+
+    for entry in contributionMsg:
+        if today_string_match in entry:
+            return entry
+
+    return today_string_match
+
+#커밋티켓
+@app.route('/ticket', methods=['POST'])
+@verify_token
+def create_ticket_contribution(current_user_id):
+    user = db.user.find_one({'id': current_user_id})
+
+    if user['getCommitTicket']:
+        return jsonify({'result':'failure', 'msg': '오늘 커밋 티켓이 이미 지급됐습니다.'})
+    
+    count = getContributionCount(user['id_github']).split()[0]
+    if count == 'No':
+        return jsonify({'result':'failure', 'msg':'지난 contributions 내역이 존재하지 않습니다.'})
+    
+    total = user['appTicket'] + int(count)
+    db.user.update_one({'id': current_user_id}, {'$set': {'appTicket':total}})
+    
+    return jsonify({'result':'success', 'msg': str(count) + '장 추가 지급됐습니다.'})
+
+#매일티켓
+@app.route('/ticket/free', methods=['POST'])
+@verify_token
+def create_ticket_free(current_user_id):
+    user = db.user.find_one({'id': current_user_id})
+
+    if user['getAppTicket']:
+        return jsonify({'result':'failure', 'msg': '오늘 무료 티켓이 이미 지급됐습니다.'})
+    
+    total = user['appTicket'] + 1
+    db.user.update_one({'id': current_user_id}, {'$set': {'getAppTicket':True}})    
+    result = db.user.update_one({'id': current_user_id}, {'$set': {'appTicket':total}})
+    status = result.modified_count == 1
+    if status:
+        return jsonify({'result':'success', 'msg': '무료 티켓이 1장 지급됐습니다.'})
     
 @app.route('/test', methods=['GET'])
 def test():
-    makeTestUser()
-
-    return jsonify({'result': 'success'})
->>>>>>> Stashed changes
+    contributionCount = getContributionCount('sjk2915')
+    return jsonify({'result': 'success', 'contribution': contributionCount})
 
 if __name__ == '__main__':
+   start_scheduler()
    print(sys.executable)  
-   app.run('0.0.0.0', port=5001, debug=True)
+   app.run('0.0.0.0', port=5001, debug=False)
